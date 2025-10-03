@@ -1,7 +1,7 @@
 #   By Fahad Alduraibi
 #   2025
-#   Version: 1.0
-#   Logic analyzer (Logicuino)
+#   Version: 1.1
+#   Logicuino - a simple logic analyzer
 #   using an Arduino (ATmega328P) board
 
 import serial
@@ -15,7 +15,6 @@ SERIAL_PORT = "/dev/ttyACM0"   # Change to COMx on Windows if needed
 BAUD_RATE = 1000000 # Must match Arduino setting
 NUM_CHANNELS = 8
 BUFFER_SIZE = 10000
-ROW_SPACING = 1.5
 
 # --- Serial setup ---
 ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.01)
@@ -25,18 +24,31 @@ time_buffer = deque(maxlen=BUFFER_SIZE)
 signal_buffers = [deque(maxlen=BUFFER_SIZE) for _ in range(NUM_CHANNELS)]
 sample_index = 0
 
-# --- Plot setup ---
-fig, ax = plt.subplots()
-plt.subplots_adjust(bottom=0.15)  # make space for button
-lines = []
-for ch in range(NUM_CHANNELS,0, -1):
-    line, = ax.plot([], [], lw=1, label=f"CH{ch}")  # label as CH0 - CH7
-    lines.append(line)
+# --- Colors for channels (Matplotlib tab10 palette) ---
+colors = plt.cm.Set3.colors
 
-ax.set_ylim(-0.1, NUM_CHANNELS * ROW_SPACING)
-ax.legend(loc="upper right")
-ax.set_xlabel("Sample index")
-ax.set_ylabel("Channels")
+# --- Plot setup ---
+fig, axes = plt.subplots(NUM_CHANNELS, 1, sharex=True, figsize=(15, 8))
+plt.subplots_adjust(bottom=0.1, hspace=0.2)  # leave space for button & spacing
+
+# Dark background style
+fig.patch.set_facecolor("#1a1a1a")
+for ax in axes:
+    ax.set_facecolor("#2d2d2d")
+    ax.tick_params(colors="white")
+    ax.spines["bottom"].set_color("white")
+    ax.spines["top"].set_color("white")
+    ax.spines["left"].set_color("white")
+    ax.spines["right"].set_color("white")
+    ax.grid(True, color="gray", linestyle="--", linewidth=0.5, alpha=0.5)
+
+lines = []
+for ch in range(NUM_CHANNELS):
+    axes[ch].set_ylim(-0.1,1.1)
+    axes[ch].set_yticks([0, 1])
+    axes[ch].set_ylabel(f"CH{ch}", color=colors[ch % len(colors)], fontsize=15, rotation='horizontal', weight='bold', verticalalignment='center', horizontalalignment='right')
+    line, = axes[ch].plot([], [], lw=1.5, color=colors[ch % len(colors)])
+    lines.append(line)
 
 # --- Zoom & Pan state ---
 time_scale = 1.0
@@ -49,13 +61,12 @@ is_frozen = False  # <-- freeze state
 def toggle_freeze(event):
     global is_frozen
     is_frozen = not is_frozen
-    if is_frozen:
-        button.label.set_text("Resume")
-    else:
-        button.label.set_text("Freeze")
+    button.label.set_text("Resume" if is_frozen else "Freeze")
         
-ax_button = plt.axes([0.8, 0.02, 0.15, 0.05])  # x, y, width, height
-button = Button(ax_button, 'Freeze')
+ax_button = plt.axes([0.4, 0.9, 0.15, 0.05], facecolor="#22096E")  # x, y, width, height
+button = Button(ax_button, 'Freeze', color="#FFFFFF", hovercolor="#999999")
+button.label.set_color("#000000")
+button.label.set_fontsize(12)
 button.on_clicked(toggle_freeze)
 
 # --- Keyboard zoom ---
@@ -107,16 +118,16 @@ def update(frame):
             time_buffer.append(sample_index)
             for ch in range(NUM_CHANNELS):
                 bit = (byte >> ch) & 1
-                signal_buffers[ch].append(bit + ch * ROW_SPACING)
+                signal_buffers[ch].append(bit)
             sample_index += 1
 
         if len(time_buffer) > 0:
             window = int(BUFFER_SIZE * time_scale)
             x_max = sample_index - x_offset
             x_min = max(0, x_max - window)
-            ax.set_xlim(x_min, x_max)
 
             for ch in range(NUM_CHANNELS):
+                axes[ch].set_xlim(x_min, x_max)
                 lines[ch].set_data(time_buffer, signal_buffers[ch])
 
     return lines
